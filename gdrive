@@ -5,7 +5,6 @@ set -euo pipefail
 # Wraps restish with automatic token management via macOS Keychain
 
 KEYCHAIN_SERVICE="gdrive-auth"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GDRIVE_SCOPES="https://www.googleapis.com/auth/drive.readonly"
 
 # Use dedicated restish config and cache in Library/Caches
@@ -124,9 +123,9 @@ do_auth() {
     
     local tokens_json
     if [[ -n "$refresh_token" ]]; then
-        tokens_json=$("$SCRIPT_DIR/auth-google" --refresh-token "$refresh_token")
+        tokens_json=$(auth-google --refresh-token "$refresh_token")
     else
-        tokens_json=$("$SCRIPT_DIR/auth-google" --scopes "$GDRIVE_SCOPES")
+        tokens_json=$(auth-google --scopes "$GDRIVE_SCOPES")
     fi
     
     save_tokens "$tokens_json"

@@ -7,43 +7,40 @@ set -euo pipefail
 KEYCHAIN_SERVICE="gdrive-auth"
 GDRIVE_SCOPES="https://www.googleapis.com/auth/drive.readonly"
 
+# Data directory (installed spec lives here)
+GDRIVE_DATA_DIR="$HOME/Library/Application Support/gdrive-cli"
+SPEC_FILE="$GDRIVE_DATA_DIR/openapi.yaml"
+
 # Use dedicated restish config and cache in Library/Caches
 GDRIVE_CACHE_DIR="$HOME/Library/Caches/gdrive-cli"
 export RESTISH_CONFIG_DIR="$GDRIVE_CACHE_DIR"
 export RESTISH_CACHE_DIR="$GDRIVE_CACHE_DIR/cache"
-OPENAPI_URL="https://raw.githubusercontent.com/APIs-guru/openapi-directory/refs/heads/main/APIs/googleapis.com/drive/v3/openapi.yaml"
 
-# Ensure API spec is downloaded and configured
-ensure_api_spec() {
-    local spec_file="$RESTISH_CONFIG_DIR/openapi.yaml"
+# Ensure restish config exists pointing to installed spec
+ensure_restish_config() {
     local config_file="$RESTISH_CONFIG_DIR/apis.json"
     
-    if [[ -f "$spec_file" && -f "$config_file" ]]; then
+    if [[ ! -f "$SPEC_FILE" ]]; then
+        echo "Error: API spec not found at $SPEC_FILE" >&2
+        echo "Please run 'make install' to install the gdrive CLI." >&2
+        exit 1
+    fi
+    
+    if [[ -f "$config_file" ]]; then
         return 0
     fi
     
-    echo "Setting up Google Drive API spec..." >&2
     mkdir -p "$RESTISH_CONFIG_DIR"
     
-    # Download spec
-    echo "Downloading OpenAPI spec..." >&2
-    curl -sSL -o "$spec_file" "$OPENAPI_URL"
-    
-    # Post-process: strip "drive." prefix from operationIds for cleaner command names
-    echo "Post-processing spec..." >&2
-    sed -i '' 's/operationId: drive\./operationId: /g' "$spec_file"
-    
-    # Create restish config with absolute path
+    # Create restish config with absolute path to installed spec
     cat > "$config_file" << EOF
 {
   "gdrive": {
     "base": "https://www.googleapis.com/drive/v3",
-    "spec_files": ["$spec_file"]
+    "spec_files": ["$SPEC_FILE"]
   }
 }
 EOF
-    
-    echo "Setup complete." >&2
 }
 
 usage() {
@@ -68,8 +65,8 @@ EOF
     exit 1
 }
 
-# Ensure API spec is set up
-ensure_api_spec
+# Ensure restish config is set up
+ensure_restish_config
 
 # Check for help flag (but pass through to restish if we have a token)
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && [[ $# -eq 1 ]]; then

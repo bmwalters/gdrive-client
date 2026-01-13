@@ -1,0 +1,81 @@
+# gdrive-client
+
+A Google Drive CLI with automatic OAuth token management.
+
+## Scripts
+
+### `gdrive`
+Main CLI that wraps [restish](https://rest.sh/) with automatic token management via macOS Keychain.
+
+On first use, automatically downloads and configures the Google Drive OpenAPI spec.
+
+```bash
+gdrive files-list
+gdrive files-get FILE_ID
+gdrive files-export FILE_ID --mime-type text/markdown
+```
+
+### `gdrive-auth`
+OAuth2 wrapper around [oauth2c](https://github.com/cloudentity/oauth2c). Outputs token JSON to stdout.
+
+```bash
+# Initial authorization (opens browser)
+./gdrive-auth
+
+# Refresh token
+./gdrive-auth --grant-type refresh_token --refresh-token "$REFRESH_TOKEN"
+```
+
+## Setup
+
+### Prerequisites
+
+```bash
+brew install cloudentity/tap/oauth2c restish
+```
+
+- `oauth2c` - OAuth2 CLI for authentication
+- `restish` - OpenAPI-driven REST CLI
+
+### Configuration
+
+Create a `.env` file in the working directory or `~/.config/gdrive-auth/config`:
+
+```bash
+GOOGLE_CLIENT_ID="your-client-id"
+GOOGLE_CLIENT_SECRET="your-client-secret"
+# Optional: override default scope
+GOOGLE_SCOPES="https://www.googleapis.com/auth/drive.readonly"
+```
+
+### Shell Completions
+
+#### Fish
+
+```bash
+cp gdrive.fish ~/.config/fish/completions/gdrive.fish
+```
+
+## Token Storage
+
+Tokens are stored in macOS Keychain under service `gdrive-auth`:
+- `access_token` - Short-lived access token
+- `refresh_token` - Long-lived refresh token
+
+The `gdrive` script automatically:
+1. Downloads the OpenAPI spec on first use
+2. Uses the access token from keychain
+3. Refreshes the token if it expires (401 response)
+4. Initiates full OAuth flow if refresh fails
+
+To clear stored tokens:
+```bash
+security delete-generic-password -s gdrive-auth -a access_token
+security delete-generic-password -s gdrive-auth -a refresh_token
+```
+
+To re-download the API spec:
+```bash
+rm -rf ~/Library/Caches/gdrive-cli
+gdrive --help
+```

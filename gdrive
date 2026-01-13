@@ -1,0 +1,233 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# gdrive: Google Drive CLI orchestration script
+# Wraps restish with automatic token management via macOS Keychain
+
+KEYCHAIN_SERVICE="gdrive-auth"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Use dedicated restish config and cache in Library/Caches
+GDRIVE_CACHE_DIR="$HOME/Library/Caches/gdrive-cli"
+export RESTISH_CONFIG_DIR="$GDRIVE_CACHE_DIR"
+export RESTISH_CACHE_DIR="$GDRIVE_CACHE_DIR/cache"
+OPENAPI_URL="https://raw.githubusercontent.com/APIs-guru/openapi-directory/refs/heads/main/APIs/googleapis.com/drive/v3/openapi.yaml"
+
+# Ensure API spec is downloaded and configured
+ensure_api_spec() {
+    local spec_file="$RESTISH_CONFIG_DIR/openapi.yaml"
+    local config_file="$RESTISH_CONFIG_DIR/apis.json"
+    
+    if [[ -f "$spec_file" && -f "$config_file" ]]; then
+        return 0
+    fi
+    
+    echo "Setting up Google Drive API spec..." >&2
+    mkdir -p "$RESTISH_CONFIG_DIR"
+    
+    # Download spec
+    echo "Downloading OpenAPI spec..." >&2
+    curl -sSL -o "$spec_file" "$OPENAPI_URL"
+    
+    # Post-process: strip "drive." prefix from operationIds for cleaner command names
+    echo "Post-processing spec..." >&2
+    sed -i '' 's/operationId: drive\./operationId: /g' "$spec_file"
+    
+    # Create restish config with absolute path
+    cat > "$config_file" << EOF
+{
+  "gdrive": {
+    "base": "https://www.googleapis.com/drive/v3",
+    "spec_files": ["$spec_file"]
+  }
+}
+EOF
+    
+    echo "Setup complete." >&2
+}
+
+usage() {
+    cat >&2 <<EOF
+Usage: gdrive [COMMAND] [ARGS...]
+
+A Google Drive CLI that handles authorization automatically.
+Wraps restish with token management.
+
+Options:
+  -h, --help    Show this help message
+
+Examples:
+  gdrive files-list
+  gdrive files-get FILE_ID
+  gdrive files-export FILE_ID --mimeType text/markdown
+
+Token storage: macOS Keychain (service: $KEYCHAIN_SERVICE)
+
+Run 'gdrive --help' after setup to see all available commands.
+EOF
+    exit 1
+}
+
+# Ensure API spec is set up
+ensure_api_spec
+
+# Check for help flag (but pass through to restish if we have a token)
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && [[ $# -eq 1 ]]; then
+    # Check if restish gdrive is configured
+    if restish gdrive --help &>/dev/null; then
+        exec restish gdrive --help
+    else
+        usage
+    fi
+fi
+
+if [[ $# -lt 1 ]]; then
+    usage
+fi
+
+# Keychain helpers
+get_from_keychain() {
+    local account="$1"
+    security find-generic-password -s "$KEYCHAIN_SERVICE" -a "$account" -w 2>/dev/null || true
+}
+
+save_to_keychain() {
+    local account="$1"
+    local value="$2"
+    # Delete existing entry if present
+    security delete-generic-password -s "$KEYCHAIN_SERVICE" -a "$account" 2>/dev/null || true
+    # Add new entry
+    security add-generic-password -s "$KEYCHAIN_SERVICE" -a "$account" -w "$value"
+}
+
+# Save tokens from JSON response
+save_tokens() {
+    local tokens_json="$1"
+    
+    local access_token
+    access_token=$(echo "$tokens_json" | jq -r '.access_token // empty')
+    if [[ -n "$access_token" ]]; then
+        save_to_keychain "access_token" "$access_token"
+    fi
+    
+    local refresh_token
+    refresh_token=$(echo "$tokens_json" | jq -r '.refresh_token // empty')
+    if [[ -n "$refresh_token" ]]; then
+        save_to_keychain "refresh_token" "$refresh_token"
+    fi
+}
+
+# Authenticate and get fresh tokens
+do_auth() {
+    local grant_type="${1:-authorization_code}"
+    local refresh_token="${2:-}"
+    
+    local tokens_json
+    if [[ "$grant_type" == "refresh_token" && -n "$refresh_token" ]]; then
+        tokens_json=$("$SCRIPT_DIR/gdrive-auth" --grant-type refresh_token --refresh-token "$refresh_token")
+    else
+        tokens_json=$("$SCRIPT_DIR/gdrive-auth" --grant-type authorization_code)
+    fi
+    
+    save_tokens "$tokens_json"
+    # Extract token and output without trailing newline
+    printf '%s' "$(echo "$tokens_json" | jq -r '.access_token')"
+}
+
+# Try to get a working access token
+get_access_token() {
+    local access_token
+    access_token=$(get_from_keychain "access_token")
+    
+    if [[ -n "$access_token" ]]; then
+        echo "$access_token"
+        return 0
+    fi
+    
+    return 1
+}
+
+# Call restish with token
+call_restish() {
+    local token="${1%$'\n'}"  # Trim trailing newline
+    token="${token%$'\r'}"     # Trim trailing CR if present
+    shift
+    restish gdrive -H "Authorization: Bearer $token" -r "$@"
+}
+
+# Check if response indicates auth failure
+is_auth_error() {
+    local output="$1"
+    local exit_code="$2"
+    
+    # Check for common auth error indicators
+    if [[ $exit_code -ne 0 ]]; then
+        if echo "$output" | grep -qiE '"code"[[:space:]]*:[[:space:]]*401|UNAUTHENTICATED|Invalid Credentials|token.*expired'; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# Main execution
+main() {
+    local access_token=""
+    
+    # Step 1: Try to get access token from keychain
+    if access_token=$(get_access_token); then
+        : # Got token
+    else
+        # No token in keychain, need to authenticate
+        echo "No access token found. Starting authorization..." >&2
+        access_token=$(do_auth authorization_code)
+    fi
+    
+    # Step 2: Call restish
+    local output
+    local exit_code=0
+    
+    set +e
+    output=$(call_restish "$access_token" "$@" 2>&1)
+    exit_code=$?
+    set -e
+    
+    # Success - print output and exit
+    if [[ $exit_code -eq 0 ]]; then
+        echo "$output"
+        exit 0
+    fi
+    
+    # Step 3: Check if it's an auth error
+    if is_auth_error "$output" "$exit_code"; then
+        echo "Access token expired. Attempting refresh..." >&2
+        
+        local refresh_token
+        refresh_token=$(get_from_keychain "refresh_token")
+        
+        if [[ -n "$refresh_token" ]]; then
+            set +e
+            access_token=$(do_auth refresh_token "$refresh_token" 2>/dev/null)
+            local refresh_exit=$?
+            set -e
+            
+            if [[ $refresh_exit -eq 0 && -n "$access_token" ]]; then
+                echo "Token refreshed. Retrying..." >&2
+                call_restish "$access_token" "$@"
+                exit $?
+            fi
+        fi
+        
+        # Step 4: Refresh failed or no refresh token, do full auth
+        echo "Token refresh failed. Starting authorization..." >&2
+        access_token=$(do_auth authorization_code)
+        
+        call_restish "$access_token" "$@"
+        exit $?
+    fi
+    
+    # Other error, print output and propagate exit code
+    echo "$output"
+    exit $exit_code
+}
+
+main "$@"

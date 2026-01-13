@@ -15,15 +15,15 @@ gdrive files-get FILE_ID
 gdrive files-export FILE_ID --mime-type text/markdown
 ```
 
-### `gdrive-auth`
+### `auth-google`
 OAuth2 wrapper around [oauth2c](https://github.com/cloudentity/oauth2c). Outputs token JSON to stdout.
 
 ```bash
 # Initial authorization (opens browser)
-./gdrive-auth
+./auth-google --scopes "https://www.googleapis.com/auth/drive.readonly"
 
 # Refresh token
-./gdrive-auth --grant-type refresh_token --refresh-token "$REFRESH_TOKEN"
+./auth-google --refresh-token "$REFRESH_TOKEN"
 ```
 
 ## Setup
@@ -39,13 +39,11 @@ brew install cloudentity/tap/oauth2c restish
 
 ### Configuration
 
-Create a `.env` file in the working directory or `~/.config/gdrive-auth/config`:
+Create a `.env` file in the working directory or `~/.config/auth-google/config`:
 
 ```bash
 GOOGLE_CLIENT_ID="your-client-id"
 GOOGLE_CLIENT_SECRET="your-client-secret"
-# Optional: override default scope
-GOOGLE_SCOPES="https://www.googleapis.com/auth/drive.readonly"
 ```
 
 ### Shell Completions

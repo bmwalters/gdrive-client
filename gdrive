@@ -6,6 +6,7 @@ set -euo pipefail
 
 KEYCHAIN_SERVICE="gdrive-auth"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GDRIVE_SCOPES="https://www.googleapis.com/auth/drive.readonly"
 
 # Use dedicated restish config and cache in Library/Caches
 GDRIVE_CACHE_DIR="$HOME/Library/Caches/gdrive-cli"
@@ -119,14 +120,13 @@ save_tokens() {
 
 # Authenticate and get fresh tokens
 do_auth() {
-    local grant_type="${1:-authorization_code}"
-    local refresh_token="${2:-}"
+    local refresh_token="${1:-}"
     
     local tokens_json
-    if [[ "$grant_type" == "refresh_token" && -n "$refresh_token" ]]; then
-        tokens_json=$("$SCRIPT_DIR/gdrive-auth" --grant-type refresh_token --refresh-token "$refresh_token")
+    if [[ -n "$refresh_token" ]]; then
+        tokens_json=$("$SCRIPT_DIR/auth-google" --refresh-token "$refresh_token")
     else
-        tokens_json=$("$SCRIPT_DIR/gdrive-auth" --grant-type authorization_code)
+        tokens_json=$("$SCRIPT_DIR/auth-google" --scopes "$GDRIVE_SCOPES")
     fi
     
     save_tokens "$tokens_json"
@@ -179,7 +179,7 @@ main() {
     else
         # No token in keychain, need to authenticate
         echo "No access token found. Starting authorization..." >&2
-        access_token=$(do_auth authorization_code)
+        access_token=$(do_auth)
     fi
     
     # Step 2: Call restish
@@ -206,7 +206,7 @@ main() {
         
         if [[ -n "$refresh_token" ]]; then
             set +e
-            access_token=$(do_auth refresh_token "$refresh_token" 2>/dev/null)
+            access_token=$(do_auth "$refresh_token" 2>/dev/null)
             local refresh_exit=$?
             set -e
             
@@ -219,7 +219,7 @@ main() {
         
         # Step 4: Refresh failed or no refresh token, do full auth
         echo "Token refresh failed. Starting authorization..." >&2
-        access_token=$(do_auth authorization_code)
+        access_token=$(do_auth)
         
         call_restish "$access_token" "$@"
         exit $?

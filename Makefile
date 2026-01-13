@@ -7,14 +7,14 @@ FISH_COMPLETIONS ?= $(HOME)/.config/fish/completions
 install: check-deps
 	@mkdir -p $(BINDIR)
 	@install -m 755 gdrive $(BINDIR)/gdrive
-	@install -m 755 gdrive-auth $(BINDIR)/gdrive-auth
+	@install -m 755 auth-google $(BINDIR)/auth-google
 	@mkdir -p $(FISH_COMPLETIONS)
 	@install -m 644 gdrive.fish $(FISH_COMPLETIONS)/gdrive.fish
 	@echo "Installed gdrive to $(BINDIR)"
 	@echo "Installed fish completions to $(FISH_COMPLETIONS)"
 
 uninstall:
-	@rm -f $(BINDIR)/gdrive $(BINDIR)/gdrive-auth
+	@rm -f $(BINDIR)/gdrive $(BINDIR)/auth-google
 	@rm -f $(FISH_COMPLETIONS)/gdrive.fish
 	@echo "Uninstalled gdrive"
 

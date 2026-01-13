@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# auth-google: OAuth2 authentication wrapper around oauth2c for Google APIs
+# Outputs token JSON to stdout
+
+# Source config from .env (cwd) or ~/.config/auth-google/config
+if [[ -f ".env" ]]; then
+    set -a
+    source ".env"
+    set +a
+elif [[ -f "$HOME/.config/auth-google/config" ]]; then
+    set -a
+    source "$HOME/.config/auth-google/config"
+    set +a
+fi
+
+# Validate required env vars
+if [[ -z "${GOOGLE_CLIENT_ID:-}" ]]; then
+    echo "Error: GOOGLE_CLIENT_ID not set" >&2
+    exit 1
+fi
+
+if [[ -z "${GOOGLE_CLIENT_SECRET:-}" ]]; then
+    echo "Error: GOOGLE_CLIENT_SECRET not set" >&2
+    exit 1
+fi
+
+usage() {
+    cat >&2 <<EOF
+Usage: auth-google [OPTIONS]
+
+Options:
+  --scopes SCOPES       OAuth2 scopes (required for initial auth)
+  --refresh-token TOKEN Use refresh token flow instead of authorization code
+  -h, --help            Show this help message
+
+Environment Variables:
+  GOOGLE_CLIENT_ID      Google OAuth2 client ID (required)
+  GOOGLE_CLIENT_SECRET  Google OAuth2 client secret (required)
+
+Config files (sourced in order of precedence):
+  .env                  Current working directory
+  ~/.config/auth-google/config
+EOF
+    exit 1
+}
+
+SCOPES=""
+REFRESH_TOKEN=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --scopes)
+            SCOPES="$2"
+            shift 2
+            ;;
+        --refresh-token)
+            REFRESH_TOKEN="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            ;;
+        *)
+            echo "Error: Unknown option: $1" >&2
+            usage
+            ;;
+    esac
+done
+
+if [[ -n "$REFRESH_TOKEN" ]]; then
+    # Refresh token flow
+    exec oauth2c https://accounts.google.com \
+        --client-id "$GOOGLE_CLIENT_ID" \
+        --client-secret "$GOOGLE_CLIENT_SECRET" \
+        --grant-type refresh_token \
+        --auth-method client_secret_post \
+        --refresh-token "$REFRESH_TOKEN" \
+        --silent
+else
+    # Authorization code flow
+    if [[ -z "$SCOPES" ]]; then
+        echo "Error: --scopes required for initial authorization" >&2
+        exit 1
+    fi
+    exec oauth2c https://accounts.google.com \
+        --client-id "$GOOGLE_CLIENT_ID" \
+        --client-secret "$GOOGLE_CLIENT_SECRET" \
+        --response-types code \
+        --grant-type authorization_code \
+        --auth-method client_secret_post \
+        --scopes "$SCOPES" \
+        --pkce \
+        --silent
+fi
+

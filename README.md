@@ -46,13 +46,17 @@ GOOGLE_CLIENT_ID="your-client-id"
 GOOGLE_CLIENT_SECRET="your-client-secret"
 ```
 
-### Shell Completions
-
-#### Fish
+### Installation
 
 ```bash
-cp gdrive.fish ~/.config/fish/completions/gdrive.fish
+make install PREFIX=~/.local
 ```
+
+This installs:
+- `gdrive` and `auth-google` scripts to `~/.local/bin`
+- Fish completions to `~/.config/fish/completions`
+
+Make sure `~/.local/bin` is in your `PATH`.
 
 ## Token Storage
 

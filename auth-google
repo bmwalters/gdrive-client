@@ -4,12 +4,8 @@ set -euo pipefail
 # auth-google: OAuth2 authentication wrapper around oauth2c for Google APIs
 # Outputs token JSON to stdout
 
-# Source config from .env (cwd) or ~/.config/auth-google/config
-if [[ -f ".env" ]]; then
-    set -a
-    source ".env"
-    set +a
-elif [[ -f "$HOME/.config/auth-google/config" ]]; then
+# Source config from ~/.config/auth-google/config
+if [[ -f "$HOME/.config/auth-google/config" ]]; then
     set -a
     source "$HOME/.config/auth-google/config"
     set +a

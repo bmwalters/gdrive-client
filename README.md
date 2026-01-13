@@ -39,7 +39,7 @@ brew install cloudentity/tap/oauth2c restish
 
 ### Configuration
 
-Create a `.env` file in the working directory or `~/.config/auth-google/config`:
+Create `~/.config/auth-google/config`:
 
 ```bash
 GOOGLE_CLIENT_ID="your-client-id"

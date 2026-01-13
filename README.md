@@ -62,12 +62,14 @@ Make sure `~/.local/bin` is in your `PATH`.
 
 Tokens are stored in macOS Keychain under service `gdrive-auth`:
 - `access_token` - Short-lived access token
-- `refresh_token` - Long-lived refresh token
+- `refresh_token` - Long-lived refresh token (protected by device passcode)
+
+The refresh token is stored with no default app access (`-T ""`), so macOS prompts for confirmation when it's accessed. This protects the long-lived credential from silent exfiltration.
 
 The `gdrive` script automatically:
 1. Downloads the OpenAPI spec on first use
 2. Uses the access token from keychain
-3. Refreshes the token if it expires (401 response)
+3. Refreshes the token if it expires (401 response) — prompts for keychain access
 4. Initiates full OAuth flow if refresh fails
 
 To clear stored tokens:

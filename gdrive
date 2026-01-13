@@ -86,6 +86,7 @@ if [[ $# -lt 1 ]]; then
 fi
 
 # Keychain helpers
+# Use -T "" to require confirmation for protected items (refresh token)
 get_from_keychain() {
     local account="$1"
     security find-generic-password -s "$KEYCHAIN_SERVICE" -a "$account" -w 2>/dev/null || true
@@ -93,11 +94,16 @@ get_from_keychain() {
 
 save_to_keychain() {
     local account="$1"
-    local value="$2"
+    local password="$2"
+    local protected="${3:-}"
     # Delete existing entry if present
-    security delete-generic-password -s "$KEYCHAIN_SERVICE" -a "$account" 2>/dev/null || true
-    # Add new entry
-    security add-generic-password -s "$KEYCHAIN_SERVICE" -a "$account" -w "$value"
+    security delete-generic-password -s "$KEYCHAIN_SERVICE" -a "$account" &>/dev/null || true
+    # Add new entry (-T "" requires confirmation for protected items)
+    if [[ "$protected" == "protected" ]]; then
+        security add-generic-password -s "$KEYCHAIN_SERVICE" -a "$account" -w "$password" -T ""
+    else
+        security add-generic-password -s "$KEYCHAIN_SERVICE" -a "$account" -w "$password"
+    fi
 }
 
 # Save tokens from JSON response
@@ -113,7 +119,8 @@ save_tokens() {
     local refresh_token
     refresh_token=$(echo "$tokens_json" | jq -r '.refresh_token // empty')
     if [[ -n "$refresh_token" ]]; then
-        save_to_keychain "refresh_token" "$refresh_token"
+        # Refresh tokens require device passcode since they're long-lived
+        save_to_keychain "refresh_token" "$refresh_token" "protected"
     fi
 }
 

@@ -49,7 +49,7 @@ GOOGLE_CLIENT_SECRET="your-client-secret"
 ### Installation
 
 ```bash
-make install PREFIX=~/.local
+make install PREFIX="$HOME/.local"
 ```
 
 This installs:
